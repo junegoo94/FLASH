@@ -1,0 +1,7 @@
+torch>=2.0
+torchvision
+numpy
+einops
+timm
+tqdm
+# optional: chamfer_distance  (only for the Chamfer-distance metric in util/evaluation.py)
