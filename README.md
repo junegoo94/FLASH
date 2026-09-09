@@ -144,6 +144,18 @@ If you find this work useful, please cite:
   journal = {arXiv preprint arXiv:2511.07377},
   year    = {2025}
 }
+
+@INPROCEEDINGS{11630360,
+  author={Goo, June Moh and Zeng, Zichao and Boehm, Jan},
+  booktitle={2026 IEEE International Conference on Image Processing (ICIP)}, 
+  title={Flash: Real-Time Lidar Super-Resolution Via Frequency-Aware Multi-Scale Fusion}, 
+  year={2026},
+  volume={},
+  number={},
+  pages={1-6},
+  keywords={Laser radar;Superresolution;Timing;Printing;Distance measurement;Frequency;Windows;Transformers;Conferences;Learning (artificial intelligence);Lidar super-resolution;Range sensing;Perception;Point Clouds;Deep learning},
+  doi={10.1109/ICIP61757.2026.11630360}}
+
 ```
 
 IEEE Xplore: https://ieeexplore.ieee.org/abstract/document/11630360 · arXiv: https://arxiv.org/abs/2511.07377
