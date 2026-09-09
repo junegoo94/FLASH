@@ -138,13 +138,6 @@ python train.py \
 If you find this work useful, please cite:
 
 ```bibtex
-@article{goo2025flash,
-  title   = {Real-Time LiDAR Super-Resolution via Frequency-Aware Multi-Scale Fusion},
-  author  = {Goo, June Moh and Zeng, Zichao and Boehm, Jan},
-  journal = {arXiv preprint arXiv:2511.07377},
-  year    = {2025}
-}
-
 @INPROCEEDINGS{11630360,
   author={Goo, June Moh and Zeng, Zichao and Boehm, Jan},
   booktitle={2026 IEEE International Conference on Image Processing (ICIP)}, 
@@ -156,10 +149,14 @@ If you find this work useful, please cite:
   keywords={Laser radar;Superresolution;Timing;Printing;Distance measurement;Frequency;Windows;Transformers;Conferences;Learning (artificial intelligence);Lidar super-resolution;Range sensing;Perception;Point Clouds;Deep learning},
   doi={10.1109/ICIP61757.2026.11630360}}
 
+@article{goo2025flash,
+  title   = {Real-Time LiDAR Super-Resolution via Frequency-Aware Multi-Scale Fusion},
+  author  = {Goo, June Moh and Zeng, Zichao and Boehm, Jan},
+  journal = {arXiv preprint arXiv:2511.07377},
+  year    = {2025}
+}
+
 ```
-
-IEEE Xplore: https://ieeexplore.ieee.org/abstract/document/11630360 · arXiv: https://arxiv.org/abs/2511.07377
-
 ## Acknowledgements
 
 This work was supported by the EPSRC through an industrial CASE studentship with Ordnance Survey (EP/X524840/1, EP/W522077/1). The backbone builds on TULIP (Yang et al., CVPR 2024).
