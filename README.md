@@ -107,7 +107,10 @@ data/kitti/
 KITTI is 16×1024 → 64×1024 (4× vertical). See the [TULIP](https://github.com/ethz-asl/TULIP) preprocessing for building range images from raw KITTI.
 
 ### Pretrained checkpoints
-See [CHECKPOINTS.md](CHECKPOINTS.md) for download links.
+```bash
+wget https://huggingface.co/jmgoo1118/FLASH/resolve/main/flash_kitti.pth
+```
+See [CHECKPOINTS.md](CHECKPOINTS.md) for details.
 
 ### Inference
 Super-resolve a low-resolution range image and back-project it to a point cloud:

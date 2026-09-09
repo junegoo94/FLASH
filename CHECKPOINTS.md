@@ -2,11 +2,19 @@
 
 | Model | Dataset | Upsampling | Download |
 |-------|---------|-----------|----------|
-| FLASH | KITTI | 16 → 64 | **[link — TODO]()** |
+| FLASH | KITTI | 16 → 64 | [Hugging Face](https://huggingface.co/jmgoo1118/FLASH/resolve/main/flash_kitti.pth) |
 
-The released KITTI checkpoint reaches **voxel IoU ≈ 0.40 @ 0.1 m** on the KITTI test split.
+The released KITTI checkpoint reaches **voxel IoU ≈ 0.41 @ 0.1 m** on the KITTI test split.
 
-> Replace the link above with your hosting URL (Google Drive / Hugging Face / GitHub release asset).
+### Download
+```bash
+wget https://huggingface.co/jmgoo1118/FLASH/resolve/main/flash_kitti.pth
+```
+or in Python:
+```python
+from huggingface_hub import hf_hub_download
+ckpt = hf_hub_download("jmgoo1118/FLASH", "flash_kitti.pth")
+```
 
 ### Inference
 ```bash
