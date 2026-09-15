@@ -1,35 +1,14 @@
 # flash_improved.py
 #
-# FLASH (model6.py) 에서 세 가지 edge blurring 버그를 수정한 버전.
 #
 # Fix 1 [FA module] : mean(X, dim=C) → channel-wise FFT
-#   - 기존: 96채널을 평균 내어 1채널로 줄인 뒤 FFT
-#   - 개선: 모든 채널에 독립적으로 FFT 적용 → edge 정보 보존
-#   - 근거: GFNet (Rao et al., NeurIPS 2021)
 #
 # Fix 2 [FA module] : scalar α → spatial α_map
-#   - 기존: 공간 전체에 동일한 α 스칼라로 frequency branch 혼합
-#   - 개선: Conv1x1으로 위치별 α_map 생성 → edge 구간에서 자동으로 높아짐
-#   - 근거: CBAM (Woo et al., ECCV 2018) - 이미 FLASH에서 사용 중인 아이디어
 #
 # Fix 3 [MSF module] : Xe + Xd → gated fusion
-#   - 기존: encoder/decoder feature를 단순 합산 → destructive interference
-#   - 개선: gate = sigmoid(Conv1x1(cat(Xe, Xd))) 로 위치별 비율 결정
-#   - 근거: SFNet (Li et al., CVPR 2022)
 #
-# ── Ablation 지원 ──────────────────────────────────────────────
-#   use_fix1 / use_fix2 / use_fix3 flag로 각 Fix를 독립적으로 on/off.
 #
-#   ★ Checkpoint 호환 보장 ★
-#     __init__ 에서 모든 모듈(freq_conv, alpha_gate, GatedMSF, freq_weight)을
-#     항상 생성하므로 state_dict key가 flag와 무관하게 동일.
-#     → 기존 checkpoint (use_fix1=True, use_fix2=True, use_fix3=True) 로드 후
-#       eval 시 동일 flag 주면 완벽 재현.
-#     → ablation용 새 모델은 flag 조합만 바꿔서 처음부터 학습.
 #
-# TULIP engine_upsampling.py 호환:
-#   model(images_low_res, images_high_res, eval=True/False) 시그니처 유지
-#   반환: (pred, total_loss, pixel_loss)
 
 import torch
 import torch.nn as nn
@@ -37,7 +16,6 @@ import torch.nn.functional as F
 from einops import rearrange
 import collections.abc
 
-# TULIP 원본 컴포넌트 재사용
 from model.tulip import (
     PatchEmbedding, PatchMerging, PatchExpanding,
     FinalPatchExpanding, PixelShuffleHead,
@@ -46,21 +24,20 @@ from model.tulip import (
 
 
 # ─────────────────────────────────────────────────────────────
-# FrequencyAwareWindowAttention  (Fix 1 + Fix 2 ablation 지원)
 # ─────────────────────────────────────────────────────────────
 
 class FrequencyAwareWindowAttention(nn.Module):
     """
-    FA module.  use_fix1 / use_fix2 flag로 ablation 가능.
+    FA module. Ablation is controlled by the use_fix1 / use_fix2 flags.
 
-    ★ 모든 모듈은 flag 와 무관하게 항상 __init__ 에서 생성 ★
-      → 기존 checkpoint 로드 시 state_dict key 불일치 없음.
+    All sub-modules are always created in __init__ regardless of the flags,
+    so loading an existing checkpoint never produces state_dict key mismatches.
 
-    use_fix1=False: 원본 FLASH 방식 (channel mean → FFT)
+    use_fix1=False: original FLASH (channel mean -> FFT)
     use_fix1=True:  channel-wise FFT (Fix 1)
 
-    use_fix2=False: 원본 FLASH 방식 (scalar freq_weight)
-    use_fix2=True:  spatial α_map (Fix 2)
+    use_fix2=False: original FLASH (scalar freq_weight)
+    use_fix2=True:  spatial alpha map (Fix 2)
     """
 
     def __init__(self, dim: int, window_size, num_heads: int,
@@ -89,7 +66,6 @@ class FrequencyAwareWindowAttention(nn.Module):
             (self.window_size[0] // 2, self.window_size[1] // 2) if shift else (0, 0)
         )
 
-        # ── Spatial attention (TULIP 원본) ──────────────────────
         self.relative_position_bias_table = nn.Parameter(
             torch.zeros(
                 (2 * self.window_size[0] - 1) * (2 * self.window_size[1] - 1),
@@ -104,32 +80,28 @@ class FrequencyAwareWindowAttention(nn.Module):
         self.softmax   = nn.Softmax(dim=-1)
 
         # ── Fix 1: channel-wise frequency conv ──────────────────
-        # 항상 생성 (checkpoint 호환)
-        # use_fix1=False 일 때는 원본 FLASH의 1채널 conv 로 대체
-        self.freq_conv = nn.Sequential(          # Fix1 용 (C→C depthwise)
+        self.freq_conv = nn.Sequential(
             nn.Conv2d(dim, dim, 1, groups=dim),
             nn.ReLU(),
             nn.Conv2d(dim, dim, 1),
             nn.Sigmoid()
         )
-        self.freq_conv_orig = nn.Sequential(     # 원본 FLASH 용 (1→1)
+        self.freq_conv_orig = nn.Sequential(
             nn.Conv2d(1, 1, 1),
             nn.Sigmoid()
         )
 
         # ── Fix 2: spatial α_map ────────────────────────────────
-        # 항상 생성 (checkpoint 호환)
-        self.alpha_gate   = nn.Sequential(       # Fix2 용 (C→1 spatial map)
+        self.alpha_gate   = nn.Sequential(
             nn.Conv2d(dim, 1, 1),
             nn.Sigmoid()
         )
-        self.freq_weight  = nn.Parameter(        # 원본 FLASH 용 scalar α
+        self.freq_weight  = nn.Parameter(
             torch.tensor(0.1)
         )
 
         self._init_relative_position_index()
 
-    # ── 내부 유틸 ────────────────────────────────────────────────
 
     def _init_relative_position_index(self):
         coords_h = torch.arange(self.window_size[0])
@@ -185,7 +157,6 @@ class FrequencyAwareWindowAttention(nn.Module):
             if self.shift:
                 self.shift_size = self.backup_shift_size
 
-        # ── Spatial attention branch (원본 그대로) ───────────────
         if self.shift:
             x_shifted = torch.roll(x, shifts=(-self.shift_size[0], -self.shift_size[1]), dims=(1, 2))
             mask = self.create_mask(x_shifted)
@@ -234,7 +205,6 @@ class FrequencyAwareWindowAttention(nn.Module):
                 freq_attn   = self.freq_conv(x_fft_abs)       # (B, C, H, W//2+1)
                 x_freq_out  = torch.fft.irfft2(x_fft * freq_attn, s=(H, W), dim=(-2, -1))
             else:
-                # 원본 FLASH: channel mean → FFT
                 x_mean = x_cf32.mean(dim=1, keepdim=True)     # (B, 1, H, W)
                 x_fft  = torch.fft.rfft2(x_mean, dim=(-2, -1))
                 freq_attn  = self.freq_conv_orig(x_fft.abs())  # (B, 1, H, W//2+1)
@@ -246,7 +216,6 @@ class FrequencyAwareWindowAttention(nn.Module):
                 # Fix 2: spatial α_map
                 alpha = self.alpha_gate(x_cf32)                # (B, 1, H, W)
             else:
-                # 원본 FLASH: scalar α
                 alpha = self.freq_weight                        # scalar
 
         x_freq_out = x_freq_out.to(x_spatial.dtype).permute(0, 2, 3, 1)  # (B,H,W,C)
@@ -259,15 +228,14 @@ class FrequencyAwareWindowAttention(nn.Module):
 
 
 # ─────────────────────────────────────────────────────────────
-# GatedMSF  (Fix 3 ablation 지원)
 # ─────────────────────────────────────────────────────────────
 
 class GatedMSF(nn.Module):
     """
-    MSF module.  use_fix3 flag로 ablation 가능.
+    MSF module. Ablation is controlled by the use_fix3 flag.
 
-    ★ gate_conv 는 항상 생성 ★  → checkpoint 호환
-    use_fix3=False: 원본 FLASH 덧셈 (Xcombined = Xe + Xd)
+    gate_conv is always created so checkpoints stay compatible.
+    use_fix3=False: original FLASH additive fusion (Xcombined = Xe + Xd)
     use_fix3=True:  gated fusion (Fix 3)
     """
 
@@ -276,10 +244,8 @@ class GatedMSF(nn.Module):
         self.use_fix3 = use_fix3
         self.align    = nn.Linear(in_dim, out_dim) if in_dim != out_dim else nn.Identity()
 
-        # Fix 3: gate (항상 생성)
         self.gate_conv = nn.Conv2d(out_dim * 2, out_dim, 1)
 
-        # Multi-scale convolutions (원본 동일)
         self.conv1x1 = nn.Conv2d(out_dim, out_dim, 1)
         self.conv3x3 = nn.Conv2d(out_dim, out_dim, 3, padding=1)
         self.conv5x5 = nn.Conv2d(out_dim, out_dim, 5, padding=2)
@@ -310,7 +276,6 @@ class GatedMSF(nn.Module):
             gate       = torch.sigmoid(self.gate_conv(torch.cat([enc_cf, dec_cf], dim=1)))
             combined   = gate * enc_cf + (1.0 - gate) * dec_cf
         else:
-            # 원본 FLASH: 단순 덧셈
             combined   = enc_cf + dec_cf
 
         f1 = self.conv1x1(combined)
@@ -441,20 +406,19 @@ class DecoderLayer(nn.Module):
 
 
 # ─────────────────────────────────────────────────────────────
-# FLASHImproved — 메인 모델
 # ─────────────────────────────────────────────────────────────
 
 class FLASHImproved(nn.Module):
     """
-    FLASH + Fix 1/2/3.  각 Fix 는 use_fix1/2/3 flag 로 독립 제어.
+    FLASH + Fix 1/2/3. Each fix is controlled independently by use_fix1/2/3.
 
-    ★ Checkpoint 호환 ★
-      모든 서브모듈은 flag 무관하게 항상 생성됨.
-      기존 checkpoint (all fixes ON) 로드 후 동일 flag 로 eval 하면 완벽 재현.
-      ablation 실험은 flag 조합을 바꿔 처음부터 학습.
+    Checkpoint compatibility:
+      all sub-modules are always created regardless of the flags.
+      Loading an existing checkpoint (all fixes ON) and evaluating with the same flags
+      reproduces it exactly; ablation runs train from scratch with a different flag combination.
 
-    TULIP engine_upsampling.py 호환:
-      forward(x, target, eval=False) → (pred, total_loss, pixel_loss)
+    Compatible with TULIP engine_upsampling.py:
+      forward(x, target, eval=False) -> (pred, total_loss, pixel_loss)
     """
 
     def __init__(self,
@@ -533,7 +497,6 @@ class FLASHImproved(nn.Module):
             ) for i in range(self.num_layers - 1)
         ])
 
-        # ── Skip connections: GatedMSF (항상 생성, use_fix3로 동작 제어) ──
         self.skip_connections = nn.ModuleList([
             GatedMSF(
                 in_dim=embed_dim * 2 ** (self.num_layers - 2 - i),
